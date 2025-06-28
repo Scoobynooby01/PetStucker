@@ -1,0 +1,203 @@
+-- Pet Plant Manager (UI-aware pet detection)
+local Players      = game:GetService("Players")
+local RunService   = game:GetService("RunService")
+local Workspace    = game:GetService("Workspace")
+local UserInput    = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+
+-- CONFIG
+local PET_DISTANCE    = 8
+local UPDATE_INTERVAL = 0.1
+local TELEPORT        = true
+
+-- GUI Setup (minimize, scan, toggle, info)
+local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+gui.Name = "PetPlantManager"; gui.ResetOnSpawn = false
+
+local icon = Instance.new("TextButton", gui)
+icon.Text = "🌱"; icon.Size = UDim2.new(0,30,0,30)
+icon.Position = UDim2.new(0,10,0.5,-15); icon.Visible = false
+
+local win = Instance.new("Frame", gui)
+win.Size = UDim2.new(0,300,0,400); win.Position = UDim2.new(0,20,0.5,-200)
+win.BackgroundColor3 = Color3.fromRGB(45,45,45); win.Active = true; win.Draggable = true
+
+local hdr = Instance.new("Frame", win); hdr.Size = UDim2.new(1,0,0,30)
+hdr.BackgroundColor3 = Color3.fromRGB(25,25,25)
+local title = Instance.new("TextLabel", hdr)
+title.Text = "Pet Plant Manager"; title.BackgroundTransparency = 1
+title.TextColor3 = Color3.new(1,1,1); title.Font = Enum.Font.GothamBold; title.TextSize = 18
+title.Size = UDim2.new(1,-30,1,0); title.Position = UDim2.new(0,5,0,0)
+local btnMin = Instance.new("TextButton", hdr)
+btnMin.Text = "—"; btnMin.Size = UDim2.new(0,25,0,25); btnMin.Position = UDim2.new(1,-30,0,2)
+btnMin.BackgroundColor3 = Color3.fromRGB(70,70,70); btnMin.TextColor3 = Color3.new(1,1,1)
+btnMin.Font = Enum.Font.Gotham; btnMin.TextSize = 18
+
+btnMin.MouseButton1Click:Connect(function()
+    win.Visible = false; icon.Visible = true
+end)
+icon.MouseButton1Click:Connect(function()
+    win.Visible = true; icon.Visible = false
+end)
+
+local layout   = Instance.new("UIListLayout", win)
+local btnScan  = Instance.new("TextButton", win)
+btnScan.Text  = "🔍 Scan Workspace"; 
+btnScan.Size  = UDim2.new(1,0,0,40); btnScan.Font = Enum.Font.GothamBold; btnScan.TextSize = 18
+btnScan.BackgroundColor3 = Color3.fromRGB(34,139,34); btnScan.TextColor3 = Color3.new(1,1,1)
+
+local btnToggle = Instance.new("TextButton", win)
+btnToggle.Text = "▶️ Start Sticking"; 
+btnToggle.Size = UDim2.new(1,0,0,40); btnToggle.Font = Enum.Font.GothamBold; btnToggle.TextSize = 18
+btnToggle.BackgroundColor3 = Color3.fromRGB(220,53,69); btnToggle.TextColor3 = Color3.new(1,1,1)
+
+local infoLabel = Instance.new("TextLabel", win)
+infoLabel.Size = UDim2.new(1,0,0,60); infoLabel.TextWrapped = true; infoLabel.TextYAlignment = Enum.TextYAlignment.Top
+infoLabel.Font = Enum.Font.Gotham; infoLabel.TextSize = 16
+infoLabel.BackgroundColor3 = Color3.fromRGB(60,60,60); infoLabel.TextColor3 = Color3.new(1,1,1)
+infoLabel.Text = "Status: Idle"
+
+layout.SortOrder = Enum.SortOrder.LayoutOrder
+layout.Padding   = UDim.new(0,5)
+
+-- STATE
+local honeysucklePos, pets, sticking, acc = nil, {}, false, 0
+
+-- Find honeysuckle
+local function findHoneysuckle()
+    local farm = Workspace:FindFirstChild("Farm")
+    farm = farm and farm:FindFirstChild("Farm")
+    farm = farm and farm:FindFirstChild("Important")
+    farm = farm and farm:FindFirstChild("Plants_Physical")
+    local hs  = farm and farm:FindFirstChild("Honeysuckle")
+    honeysucklePos = hs and hs:GetPivot().Position or nil
+    return honeysucklePos ~= nil
+end
+
+-- Find pets via ActivePetUI, fallback to all under PetsPhysical
+local function findPets()
+    pets = {}
+    -- 1) UI list
+    local guiRoot = player:FindFirstChild("PlayerGui")
+    local uiRoot  = guiRoot and guiRoot:FindFirstChild("ActivePetUI", true)
+    if uiRoot then
+        local main = uiRoot:FindFirstChild("Main", true)
+        local sc   = main and main:FindFirstChild("ScrollingFrame")
+        if sc then
+            for _, child in ipairs(sc:GetChildren()) do
+                if child:IsA("Frame") and child.Name ~= "PetTemplate" then
+                    local lbl = child:FindFirstChild("PetName")
+                             or child:FindFirstChildOfClass("TextLabel")
+                    if lbl then
+                        local nm = lbl.Text
+                        local mdl = Workspace:FindFirstChild("PetsPhysical")
+                                     and Workspace.PetsPhysical:FindFirstChild(nm)
+                        if mdl then
+                            local root = mdl.PrimaryPart
+                                      or mdl:FindFirstChildWhichIsA("BasePart")
+                            if root then
+                                mdl.PrimaryPart = root
+                                table.insert(pets,{model=mdl, root=root})
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    -- 2) Fallback
+    if #pets == 0 then
+        local pp = Workspace:FindFirstChild("PetsPhysical")
+        if pp then
+            for _, mdl in ipairs(pp:GetChildren()) do
+                if mdl:IsA("Model") then
+                    local root = mdl.PrimaryPart
+                              or mdl:FindFirstChildWhichIsA("BasePart")
+                    if root then
+                        mdl.PrimaryPart = root
+                        table.insert(pets,{model=mdl, root=root})
+                    end
+                end
+            end
+        end
+    end
+    return #pets
+end
+
+-- Update status text
+local function updateInfo()
+    infoLabel.Text = string.format(
+        "Honeysuckle: %s\nPets Found: %d\nSticking: %s",
+        honeysucklePos and "✓" or "✗",
+        #pets,
+        sticking and "ON" or "OFF"
+    )
+end
+
+-- Move pets around the plant
+local function movePets()
+    if not honeysucklePos or #pets==0 then return end
+    for i, pd in ipairs(pets) do
+        local ang    = (i-1)*(2*math.pi/#pets)
+        local target = Vector3.new(
+            honeysucklePos.X + math.cos(ang)*PET_DISTANCE,
+            honeysucklePos.Y + 2,
+            honeysucklePos.Z + math.sin(ang)*PET_DISTANCE
+        )
+        if TELEPORT then
+            pd.model:SetPrimaryPartCFrame(CFrame.new(target))
+        else
+            local bp = pd.root:FindFirstChild("__BPMove")
+                     or Instance.new("BodyPosition", pd.root)
+            bp.Name = "__BPMove"; bp.MaxForce=Vector3.new(1e5,1e5,1e5)
+            bp.P=3000; bp.D=500; bp.Position=target
+            game:GetService("Debris"):AddItem(bp, UPDATE_INTERVAL*2)
+        end
+    end
+end
+
+-- Button callbacks
+btnScan.MouseButton1Click:Connect(function()
+    findHoneysuckle()
+    findPets()
+    updateInfo()
+end)
+
+btnToggle.MouseButton1Click:Connect(function()
+    if not honeysucklePos or #pets==0 then
+        infoLabel.Text = "⛔ Scan first!"
+        return
+    end
+    sticking = not sticking
+    btnToggle.Text = sticking and "⏹️ Stop Sticking" or "▶️ Start Sticking"
+    btnToggle.BackgroundColor3 = sticking
+        and Color3.fromRGB(34,139,34)
+        or Color3.fromRGB(220,53,69)
+    updateInfo()
+end)
+
+-- Hotkey H
+UserInput.InputBegan:Connect(function(inp, gp)
+    if gp then return end
+    if inp.KeyCode==Enum.KeyCode.H then
+        win.Visible  = not win.Visible
+        icon.Visible = not icon.Visible
+    end
+end)
+
+-- Heartbeat
+RunService.Heartbeat:Connect(function(dt)
+    if sticking then
+        acc = acc + dt
+        if acc >= UPDATE_INTERVAL then
+            acc = 0
+            movePets()
+        end
+    end
+end)
+
+-- Auto-scan
+findHoneysuckle()
+findPets()
+updateInfo()
