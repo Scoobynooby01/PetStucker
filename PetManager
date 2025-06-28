@@ -219,22 +219,35 @@ end
 local function findPetMovers()
     activePetObjects = {}
     local petsPhysical = workspace:FindFirstChild("PetsPhysical")
-    if petsPhysical then
-        for _, petModel in pairs(petsPhysical:GetChildren()) do
-            if petModel.Name == "PetMover" and petModel:IsA("Model") then
-                local rootPart = petModel:FindFirstChild("RootPart_PetMover_WELD")
-                if rootPart and rootPart:IsA("Part") then
-                    table.insert(activePetObjects, {
-                        model = petModel,
-                        rootPart = rootPart,
-                        name = petModel.Name .. "_" .. #activePetObjects
-                    })
-                end
+    if not petsPhysical then return 0 end
+
+    -- your exact pets, in the order you listed
+    local petRefs = {
+        petsPhysical:GetChildren()[7],
+        petsPhysical:FindFirstChild("PetMover"),
+        petsPhysical:GetChildren()[4],
+        petsPhysical:GetChildren()[2],
+        petsPhysical:GetChildren()[5],
+        petsPhysical:GetChildren()[6],
+        petsPhysical:GetChildren()[3],
+    }
+
+    for _, petModel in ipairs(petRefs) do
+        if petModel and petModel:IsA("Model") then
+            local rootPart = petModel:FindFirstChild("RootPart_PetMover_WELD")
+            if rootPart and rootPart:IsA("Part") then
+                table.insert(activePetObjects, {
+                    model    = petModel,
+                    rootPart = rootPart,
+                    name     = petModel.Name .. "_" .. (#activePetObjects + 1),
+                })
             end
         end
     end
+
     return #activePetObjects
 end
+
 
 local function calculatePetPositions()
     if not honeysucklePosition or #activePetObjects == 0 then return {} end
