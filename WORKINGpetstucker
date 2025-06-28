@@ -1,4 +1,4 @@
--- Pet Plant Manager for Grow a Garden (Roblox) - FIXED VERSION
+-- Pet Plant Manager for Grow a Garden (Roblox) - COMPLETELY REWRITTEN
 -- Keeps pets near Honeysuckle plants for ability farming
 -- Place this in StarterGui or StarterPlayerScripts
 
@@ -13,17 +13,18 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 -- Configuration
 local PET_DISTANCE = 8 -- How close pets stay to assigned plants
-local UPDATE_INTERVAL = 0.5
+local UPDATE_INTERVAL = 0.1 -- Faster updates for better responsiveness
 local ANIMATION_TIME = 0.3
 
 -- Data storage
-local plantAssignments = {} -- [plant] = {pets = {}, position = Vector3}
-local allPlants = {}
-local allPets = {}
+local honeysucklePlants = {}
+local activePets = {}
+local petAssignments = {} -- [petId] = plantPosition
 local lastUpdate = 0
 local managementEnabled = false
+local debugMode = true -- Enable for console output
 
--- GUI Creation (Original Style)
+-- GUI Creation
 local function createMainGUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "PetPlantManager"
@@ -56,8 +57,8 @@ local function createMainGUI()
     -- Main Menu Frame
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "MainMenu"
-    mainFrame.Size = UDim2.new(0, 400, 0, 500)
-    mainFrame.Position = UDim2.new(0.5, -200, 0.5, -250)
+    mainFrame.Size = UDim2.new(0, 400, 0, 600)
+    mainFrame.Position = UDim2.new(0.5, -200, 0.5, -300)
     mainFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
     mainFrame.BorderSizePixel = 0
     mainFrame.Active = true
@@ -91,7 +92,7 @@ local function createMainGUI()
     titleLabel.Size = UDim2.new(1, -80, 1, 0)
     titleLabel.Position = UDim2.new(0, 10, 0, 0)
     titleLabel.BackgroundTransparency = 1
-    titleLabel.Text = "Pet Plant Manager - Fixed"
+    titleLabel.Text = "Pet Plant Manager - REWRITTEN"
     titleLabel.TextColor3 = Color3.new(1, 1, 1)
     titleLabel.TextScaled = true
     titleLabel.Font = Enum.Font.SourceSansBold
@@ -133,10 +134,10 @@ local function createMainGUI()
     -- Status Label
     local statusLabel = Instance.new("TextLabel")
     statusLabel.Name = "StatusLabel"
-    statusLabel.Size = UDim2.new(1, 0, 0, 30)
+    statusLabel.Size = UDim2.new(1, 0, 0, 50)
     statusLabel.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
     statusLabel.BorderSizePixel = 0
-    statusLabel.Text = "Ready - Press Refresh to start"
+    statusLabel.Text = "Ready - Press Scan to find plants and pets"
     statusLabel.TextColor3 = Color3.new(1, 1, 1)
     statusLabel.TextScaled = true
     statusLabel.Font = Enum.Font.SourceSans
@@ -147,101 +148,140 @@ local function createMainGUI()
     statusCorner.CornerRadius = UDim.new(0, 8)
     statusCorner.Parent = statusLabel
 
-    -- Refresh Button
-    local refreshBtn = Instance.new("TextButton")
-    refreshBtn.Name = "RefreshButton"
-    refreshBtn.Size = UDim2.new(1, 0, 0, 35)
-    refreshBtn.BackgroundColor3 = Color3.fromRGB(34, 139, 34)
-    refreshBtn.BorderSizePixel = 0
-    refreshBtn.Text = "🔄 Refresh Plants & Pets"
-    refreshBtn.TextColor3 = Color3.new(1, 1, 1)
-    refreshBtn.TextScaled = true
-    refreshBtn.Font = Enum.Font.SourceSans
-    refreshBtn.LayoutOrder = 1
-    refreshBtn.Parent = contentFrame
+    -- Scan Button
+    local scanBtn = Instance.new("TextButton")
+    scanBtn.Name = "ScanButton"
+    scanBtn.Size = UDim2.new(1, 0, 0, 35)
+    scanBtn.BackgroundColor3 = Color3.fromRGB(34, 139, 34)
+    scanBtn.BorderSizePixel = 0
+    scanBtn.Text = "🔍 Scan for Plants & Pets"
+    scanBtn.TextColor3 = Color3.new(1, 1, 1)
+    scanBtn.TextScaled = true
+    scanBtn.Font = Enum.Font.SourceSans
+    scanBtn.LayoutOrder = 1
+    scanBtn.Parent = contentFrame
 
-    local refreshCorner = Instance.new("UICorner")
-    refreshCorner.CornerRadius = UDim.new(0, 8)
-    refreshCorner.Parent = refreshBtn
+    local scanCorner = Instance.new("UICorner")
+    scanCorner.CornerRadius = UDim.new(0, 8)
+    scanCorner.Parent = scanBtn
+
+    -- Assign All Button
+    local assignBtn = Instance.new("TextButton")
+    assignBtn.Name = "AssignButton"
+    assignBtn.Size = UDim2.new(1, 0, 0, 35)
+    assignBtn.BackgroundColor3 = Color3.fromRGB(255, 193, 7)
+    assignBtn.BorderSizePixel = 0
+    assignBtn.Text = "🎯 Assign All Pets to Closest Honeysuckle"
+    assignBtn.TextColor3 = Color3.new(0, 0, 0)
+    assignBtn.TextScaled = true
+    assignBtn.Font = Enum.Font.SourceSans
+    assignBtn.LayoutOrder = 2
+    assignBtn.Parent = contentFrame
+
+    local assignCorner = Instance.new("UICorner")
+    assignCorner.CornerRadius = UDim.new(0, 8)
+    assignCorner.Parent = assignBtn
 
     -- Management Toggle Button
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Name = "ToggleButton"
-    toggleBtn.Size = UDim2.new(1, 0, 0, 35)
+    toggleBtn.Size = UDim2.new(1, 0, 0, 40)
     toggleBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
     toggleBtn.BorderSizePixel = 0
-    toggleBtn.Text = "▶️ Start Pet Management"
+    toggleBtn.Text = "▶️ START PET STICKING"
     toggleBtn.TextColor3 = Color3.new(1, 1, 1)
     toggleBtn.TextScaled = true
-    toggleBtn.Font = Enum.Font.SourceSans
-    toggleBtn.LayoutOrder = 2
+    toggleBtn.Font = Enum.Font.SourceSansBold
+    toggleBtn.LayoutOrder = 3
     toggleBtn.Parent = contentFrame
 
     local toggleCorner = Instance.new("UICorner")
     toggleCorner.CornerRadius = UDim.new(0, 8)
     toggleCorner.Parent = toggleBtn
 
-    return screenGui, mainFrame, iconFrame, contentFrame, refreshBtn, minimizeBtn, statusLabel, toggleBtn
+    -- Debug Info
+    local debugLabel = Instance.new("TextLabel")
+    debugLabel.Name = "DebugLabel"
+    debugLabel.Size = UDim2.new(1, 0, 0, 100)
+    debugLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    debugLabel.BorderSizePixel = 0
+    debugLabel.Text = "Debug Info:\nNo data yet"
+    debugLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    debugLabel.TextScaled = true
+    debugLabel.Font = Enum.Font.SourceSans
+    debugLabel.TextYAlignment = Enum.TextYAlignment.Top
+    debugLabel.LayoutOrder = 4
+    debugLabel.Parent = contentFrame
+
+    local debugCorner = Instance.new("UICorner")
+    debugCorner.CornerRadius = UDim.new(0, 8)
+    debugCorner.Parent = debugLabel
+
+    return screenGui, mainFrame, iconFrame, contentFrame, scanBtn, assignBtn, minimizeBtn, statusLabel, toggleBtn, debugLabel
 end
 
--- Find Honeysuckle plants using the exact path you provided
+-- Find ONLY Honeysuckle plant positions (avoid duplicates)
 local function findHoneysucklePlants()
-    allPlants = {}
+    honeysucklePlants = {}
     
-    print("=== SEARCHING FOR HONEYSUCKLE (EXACT PATH) ===")
+    if debugMode then print("=== SEARCHING FOR HONEYSUCKLE PLANTS ===") end
     
-    -- Use the exact path you provided
-    local honeysucklePath = workspace:FindFirstChild("Farm")
-    if honeysucklePath then
-        honeysucklePath = honeysucklePath:FindFirstChild("Farm")
-        if honeysucklePath then
-            honeysucklePath = honeysucklePath:FindFirstChild("Important")
-            if honeysucklePath then
-                honeysucklePath = honeysucklePath:FindFirstChild("Plants_Physical")
-                if honeysucklePath then
-                    honeysucklePath = honeysucklePath:FindFirstChild("Honeysuckle")
-                    if honeysucklePath then
-                        local fruits = honeysucklePath:FindFirstChild("Fruits")
-                        if fruits then
-                            local honeysuckle = fruits:FindFirstChild("Honeysuckle")
-                            if honeysuckle then
-                                table.insert(allPlants, honeysuckle)
-                                print("✅ Found Honeysuckle at exact path:", honeysuckle:GetFullName())
+    -- Look for honeysuckle in Plants_Physical
+    local farmPath = workspace:FindFirstChild("Farm")
+    if farmPath then
+        farmPath = farmPath:FindFirstChild("Farm")
+        if farmPath then
+            farmPath = farmPath:FindFirstChild("Important")
+            if farmPath then
+                farmPath = farmPath:FindFirstChild("Plants_Physical")
+                if farmPath then
+                    for _, plantFolder in pairs(farmPath:GetChildren()) do
+                        if plantFolder.Name == "Honeysuckle" and plantFolder:IsA("Folder") then
+                            -- Get the main position of this plant
+                            local plantPosition = nil
+                            
+                            -- Try to find a part or model with position
+                            for _, child in pairs(plantFolder:GetDescendants()) do
+                                if child:IsA("Part") and child.Name ~= "Honeysuckle" then -- Avoid fruit duplicates
+                                    plantPosition = child.Position
+                                    break
+                                elseif child:IsA("Model") and child.PrimaryPart then
+                                    plantPosition = child.PrimaryPart.Position
+                                    break
+                                end
+                            end
+                            
+                            if plantPosition then
+                                table.insert(honeysucklePlants, {
+                                    object = plantFolder,
+                                    position = plantPosition,
+                                    name = "Honeysuckle Plant #" .. (#honeysucklePlants + 1)
+                                })
+                                if debugMode then 
+                                    print("✅ Found Honeysuckle at:", plantPosition)
+                                end
                             end
                         end
-                        
-                        -- Also add the main Honeysuckle folder as a plant option
-                        table.insert(allPlants, honeysucklePath)
-                        print("✅ Found Honeysuckle folder:", honeysucklePath:GetFullName())
                     end
                 end
             end
         end
     end
     
-    -- Backup search in case structure changed
-    if #allPlants == 0 then
-        print("Main path not found, searching workspace...")
-        for _, obj in pairs(workspace:GetDescendants()) do
-            if obj.Name == "Honeysuckle" and obj.Parent then
-                table.insert(allPlants, obj)
-                print("✅ Found Honeysuckle (backup search):", obj:GetFullName())
-            end
-        end
+    if debugMode then 
+        print("=== HONEYSUCKLE SEARCH COMPLETE ===")
+        print("Total plants found:", #honeysucklePlants)
     end
     
-    print("=== HONEYSUCKLE SEARCH COMPLETE ===")
-    print("Total Honeysuckle plants found:", #allPlants)
-    return #allPlants
+    return #honeysucklePlants
 end
 
--- Find pets using the exact GUI path you provided
-local function findPlayerPets()
-    allPets = {}
+-- Find active pets from GUI and get their data
+local function findActivePets()
+    activePets = {}
     
-    print("=== SEARCHING FOR PETS IN GUI ===")
+    if debugMode then print("=== SEARCHING FOR ACTIVE PETS ===") end
     
-    -- Use the exact path you provided: game:GetService("Players").LocalPlayer.PlayerGui.ActivePetUI.Frame.Main.ScrollingFrame
     local activePetUI = playerGui:FindFirstChild("ActivePetUI")
     if activePetUI then
         local frame = activePetUI:FindFirstChild("Frame")
@@ -250,252 +290,153 @@ local function findPlayerPets()
             if main then
                 local scrollingFrame = main:FindFirstChild("ScrollingFrame")
                 if scrollingFrame then
-                    print("✅ Found pet GUI structure")
+                    if debugMode then print("✅ Found pet GUI structure") end
                     
-                    -- Get all pets from the scrolling frame
+                    -- Get all pet frames from the scrolling frame
                     for _, petFrame in pairs(scrollingFrame:GetChildren()) do
-                        if petFrame:IsA("Frame") or petFrame:IsA("GuiObject") then
-                            -- Look for actual pet objects in workspace that correspond to GUI pets
-                            local petName = petFrame.Name
-                            print("Found pet in GUI:", petName)
+                        if petFrame:IsA("Frame") and petFrame.Name ~= "UIListLayout" then
+                            -- Extract pet information from the GUI
+                            local petData = {
+                                id = petFrame.Name,
+                                guiFrame = petFrame,
+                                name = "Pet_" .. petFrame.Name
+                            }
                             
-                            -- Search workspace for actual pet objects
-                            for _, obj in pairs(workspace:GetDescendants()) do
-                                if obj.Name:find(petName) or obj.Name:find("Pet") then
-                                    if obj:IsA("Model") or obj:IsA("Part") then
-                                        if not table.find(allPets, obj) then
-                                            table.insert(allPets, obj)
-                                            print("✅ Found corresponding pet in workspace:", obj.Name)
-                                        end
-                                    end
+                            -- Try to find position data in the pet frame
+                            for _, child in pairs(petFrame:GetDescendants()) do
+                                if child:IsA("TextLabel") and child.Text:find("Position") then
+                                    -- Extract position if available
+                                    local posText = child.Text
+                                    if debugMode then print("Found position text:", posText) end
                                 end
                             end
                             
-                            -- Also add the GUI frame itself as reference
-                            table.insert(allPets, petFrame)
-                            print("✅ Added GUI pet frame:", petFrame.Name)
+                            table.insert(activePets, petData)
+                            if debugMode then 
+                                print("✅ Found pet:", petData.id)
+                            end
                         end
                     end
-                else
-                    print("❌ ScrollingFrame not found in Main")
-                end
-            else
-                print("❌ Main not found in Frame")
-            end
-        else
-            print("❌ Frame not found in ActivePetUI")
-        end
-    else
-        print("❌ ActivePetUI not found in PlayerGui")
-        print("Available GUIs:")
-        for _, gui in pairs(playerGui:GetChildren()) do
-            print(" -", gui.Name)
-        end
-    end
-    
-    -- Backup: search for pets near player
-    if #allPets == 0 then
-        print("No pets found in GUI, searching workspace...")
-        if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-            local playerPos = player.Character.HumanoidRootPart.Position
-            
-            for _, obj in pairs(workspace:GetDescendants()) do
-                if (obj:IsA("Model") or obj:IsA("Part")) and obj.Name:lower():find("pet") then
-                    local objPos = nil
-                    if obj:IsA("Model") and obj.PrimaryPart then
-                        objPos = obj.PrimaryPart.Position
-                    elseif obj:IsA("Part") then
-                        objPos = obj.Position
-                    end
-                    
-                    if objPos and (objPos - playerPos).Magnitude <= 50 then
-                        table.insert(allPets, obj)
-                        print("✅ Found nearby pet:", obj.Name)
-                    end
                 end
             end
         end
     end
     
-    print("=== PET SEARCH COMPLETE ===")
-    print("Total pets found:", #allPets)
-    return #allPets
-end
-
--- Create Plant Selection UI
-local function createPlantCard(plant, contentFrame)
-    local cardFrame = Instance.new("Frame")
-    cardFrame.Name = "PlantCard_" .. plant.Name
-    cardFrame.Size = UDim2.new(1, 0, 0, 120)
-    cardFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    cardFrame.BorderSizePixel = 0
-    cardFrame.LayoutOrder = #contentFrame:GetChildren() + 1
-    cardFrame.Parent = contentFrame
-
-    local cardCorner = Instance.new("UICorner")
-    cardCorner.CornerRadius = UDim.new(0, 8)
-    cardCorner.Parent = cardFrame
-
-    -- Plant Info
-    local plantName = Instance.new("TextLabel")
-    plantName.Size = UDim2.new(0.6, 0, 0, 25)
-    plantName.Position = UDim2.new(0, 10, 0, 5)
-    plantName.BackgroundTransparency = 1
-    plantName.Text = plant.Name .. " (" .. plant.ClassName .. ")"
-    plantName.TextColor3 = Color3.new(1, 1, 1)
-    plantName.TextScaled = true
-    plantName.Font = Enum.Font.SourceSansBold
-    plantName.TextXAlignment = Enum.TextXAlignment.Left
-    plantName.Parent = cardFrame
-
-    -- Assigned Pets Count
-    local petCount = Instance.new("TextLabel")
-    petCount.Name = "PetCount"
-    petCount.Size = UDim2.new(0.35, 0, 0, 20)
-    petCount.Position = UDim2.new(0.6, 0, 0, 5)
-    petCount.BackgroundTransparency = 1
-    petCount.Text = "Pets: 0"
-    petCount.TextColor3 = Color3.fromRGB(150, 150, 150)
-    petCount.TextScaled = true
-    petCount.Font = Enum.Font.SourceSans
-    petCount.TextXAlignment = Enum.TextXAlignment.Right
-    petCount.Parent = cardFrame
-
-    -- Assign All Pets Button
-    local assignAllBtn = Instance.new("TextButton")
-    assignAllBtn.Size = UDim2.new(1, -20, 0, 30)
-    assignAllBtn.Position = UDim2.new(0, 10, 0, 30)
-    assignAllBtn.BackgroundColor3 = Color3.fromRGB(34, 139, 34)
-    assignAllBtn.BorderSizePixel = 0
-    assignAllBtn.Text = "🎯 Assign All Pets to This Plant"
-    assignAllBtn.TextColor3 = Color3.new(1, 1, 1)
-    assignAllBtn.TextScaled = true
-    assignAllBtn.Font = Enum.Font.SourceSans
-    assignAllBtn.Parent = cardFrame
-
-    local assignCorner = Instance.new("UICorner")
-    assignCorner.CornerRadius = UDim.new(0, 4)
-    assignCorner.Parent = assignAllBtn
-
-    -- Clear button
-    local clearBtn = Instance.new("TextButton")
-    clearBtn.Size = UDim2.new(1, -20, 0, 25)
-    clearBtn.Position = UDim2.new(0, 10, 1, -30)
-    clearBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
-    clearBtn.BorderSizePixel = 0
-    clearBtn.Text = "Clear All Pets"
-    clearBtn.TextColor3 = Color3.new(1, 1, 1)
-    clearBtn.TextScaled = true
-    clearBtn.Font = Enum.Font.SourceSans
-    clearBtn.Parent = cardFrame
-
-    local clearCorner = Instance.new("UICorner")
-    clearCorner.CornerRadius = UDim.new(0, 4)
-    clearCorner.Parent = clearBtn
-
-    -- Button functions
-    assignAllBtn.MouseButton1Click:Connect(function()
-        plantAssignments[plant] = {pets = {}, position = Vector3.new(0, 0, 0)}
-        
-        for _, pet in ipairs(allPets) do
-            table.insert(plantAssignments[plant].pets, pet)
-        end
-        
-        petCount.Text = "Pets: " .. #allPets
-        assignAllBtn.Text = "✅ All Pets Assigned!"
-        assignAllBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
-        
-        print("Assigned", #allPets, "pets to", plant.Name)
-    end)
-
-    clearBtn.MouseButton1Click:Connect(function()
-        plantAssignments[plant] = {pets = {}, position = Vector3.new(0, 0, 0)}
-        petCount.Text = "Pets: 0"
-        assignAllBtn.Text = "🎯 Assign All Pets to This Plant"
-        assignAllBtn.BackgroundColor3 = Color3.fromRGB(34, 139, 34)
-        
-        print("Cleared all pets from", plant.Name)
-    end)
-end
-
--- Get main part of an object
-local function getMainPart(obj)
-    if obj:IsA("Part") then
-        return obj
-    elseif obj:IsA("Model") then
-        return obj.PrimaryPart or 
-               obj:FindFirstChild("HumanoidRootPart") or
-               obj:FindFirstChild("Torso") or
-               obj:FindFirstChild("Head") or
-               obj:FindFirstChildOfClass("Part")
+    if debugMode then 
+        print("=== PET SEARCH COMPLETE ===")
+        print("Total active pets found:", #activePets)
     end
-    return nil
+    
+    return #activePets
 end
 
--- Pet Management System
+-- Find the closest honeysuckle to player
+local function getClosestHoneysuckle()
+    if #honeysucklePlants == 0 or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+        return nil
+    end
+    
+    local playerPos = player.Character.HumanoidRootPart.Position
+    local closest = nil
+    local closestDistance = math.huge
+    
+    for _, plant in ipairs(honeysucklePlants) do
+        local distance = (plant.position - playerPos).Magnitude
+        if distance < closestDistance then
+            closestDistance = distance
+            closest = plant
+        end
+    end
+    
+    return closest
+end
+
+-- Assign all pets to the closest honeysuckle
+local function assignAllPetsToClosest()
+    local targetPlant = getClosestHoneysuckle()
+    if not targetPlant then
+        if debugMode then print("❌ No honeysuckle plants found to assign to") end
+        return false
+    end
+    
+    petAssignments = {}
+    
+    for _, pet in ipairs(activePets) do
+        petAssignments[pet.id] = targetPlant.position
+        if debugMode then 
+            print("✅ Assigned", pet.id, "to honeysuckle at", targetPlant.position)
+        end
+    end
+    
+    if debugMode then print("✅ All", #activePets, "pets assigned to closest honeysuckle") end
+    return true
+end
+
+-- NEW METHOD: Use RemoteEvents to move pets (if available)
+local function tryMoveViaRemote(petId, targetPosition)
+    -- Look for pet movement remotes in ReplicatedStorage
+    for _, remote in pairs(ReplicatedStorage:GetDescendants()) do
+        if remote:IsA("RemoteEvent") and (remote.Name:find("Pet") or remote.Name:find("Move")) then
+            pcall(function()
+                remote:FireServer(petId, targetPosition)
+            end)
+            if debugMode then print("Tried moving", petId, "via remote:", remote.Name) end
+        end
+    end
+end
+
+-- NEW METHOD: Try to manipulate pet GUI to move pets
+local function tryMoveViaGUI(petId, targetPosition)
+    local activePetUI = playerGui:FindFirstChild("ActivePetUI")
+    if activePetUI then
+        -- Look for movement controls in the pet GUI
+        for _, obj in pairs(activePetUI:GetDescendants()) do
+            if obj:IsA("TextButton") and (obj.Text:find("Move") or obj.Text:find("Go")) then
+                -- Try clicking movement buttons
+                pcall(function()
+                    for i = 1, 3 do
+                        obj.MouseButton1Click:Fire()
+                        wait(0.1)
+                    end
+                end)
+            end
+        end
+    end
+end
+
+-- NEW METHOD: Look for pets in workspace and use CFrame manipulation
+local function tryMoveViaWorkspace(petId, targetPosition)
+    for _, obj in pairs(workspace:GetDescendants()) do
+        if (obj.Name:find(petId) or obj.Name:find("Pet")) and obj:IsA("Part") then
+            pcall(function()
+                obj.CFrame = CFrame.new(targetPosition + Vector3.new(math.random(-5, 5), 2, math.random(-5, 5)))
+            end)
+            if debugMode then print("Moved", obj.Name, "in workspace to", targetPosition) end
+        end
+    end
+end
+
+-- Pet Management System - Try multiple movement methods
 local function managePetPositions(deltaTime)
-    if not managementEnabled then return end
+    if not managementEnabled or #petAssignments == 0 then return end
     
     lastUpdate = lastUpdate + deltaTime
     
     if lastUpdate >= UPDATE_INTERVAL then
         lastUpdate = 0
         
-        for plant, data in pairs(plantAssignments) do
-            if plant.Parent and #data.pets > 0 then
-                local plantPart = getMainPart(plant)
-                
-                if plantPart then
-                    local plantPos = plantPart.Position
-                    data.position = plantPos
-                    
-                    for i, pet in ipairs(data.pets) do
-                        if pet.Parent then
-                            local petPart = getMainPart(pet)
-                            
-                            if petPart then
-                                -- Calculate target position around plant
-                                local angle = (i - 1) * (math.pi * 2) / #data.pets
-                                local targetPos = plantPos + Vector3.new(
-                                    math.cos(angle) * PET_DISTANCE,
-                                    2, -- Slightly above ground
-                                    math.sin(angle) * PET_DISTANCE
-                                )
-                                
-                                local currentPos = petPart.Position
-                                local distance = (targetPos - currentPos).Magnitude
-                                
-                                -- Only move if pet is too far from target
-                                if distance > 3 then
-                                    print("Moving", pet.Name, "to", plant.Name)
-                                    
-                                    -- Use BodyPosition for smooth movement
-                                    local bodyPosition = petPart:FindFirstChild("BodyPosition")
-                                    if not bodyPosition then
-                                        bodyPosition = Instance.new("BodyPosition")
-                                        bodyPosition.MaxForce = Vector3.new(4000, 0, 4000) -- No Y force
-                                        bodyPosition.P = 3000
-                                        bodyPosition.D = 500
-                                        bodyPosition.Parent = petPart
-                                    end
-                                    
-                                    bodyPosition.Position = targetPos
-                                    
-                                    -- Clean up after a while
-                                    game:GetService("Debris"):AddItem(bodyPosition, 3)
-                                end
-                            end
-                        end
-                    end
-                end
-            end
+        for petId, targetPosition in pairs(petAssignments) do
+            -- Try all available movement methods
+            tryMoveViaRemote(petId, targetPosition)
+            tryMoveViaGUI(petId, targetPosition)
+            tryMoveViaWorkspace(petId, targetPosition)
         end
     end
 end
 
 -- Main System
 local function initializeSystem()
-    local screenGui, mainFrame, iconFrame, contentFrame, refreshBtn, minimizeBtn, statusLabel, toggleBtn = createMainGUI()
+    local screenGui, mainFrame, iconFrame, contentFrame, scanBtn, assignBtn, minimizeBtn, statusLabel, toggleBtn, debugLabel = createMainGUI()
     
     -- Minimize/Maximize functionality
     local function minimizeMenu()
@@ -518,7 +459,7 @@ local function initializeSystem()
         local tween = TweenService:Create(
             mainFrame,
             TweenInfo.new(ANIMATION_TIME, Enum.EasingStyle.Quad),
-            {Size = UDim2.new(0, 400, 0, 500)}
+            {Size = UDim2.new(0, 400, 0, 600)}
         )
         tween:Play()
     end
@@ -531,51 +472,57 @@ local function initializeSystem()
         managementEnabled = not managementEnabled
         
         if managementEnabled then
-            toggleBtn.Text = "⏹️ Stop Pet Management"
+            toggleBtn.Text = "⏹️ STOP PET STICKING"
             toggleBtn.BackgroundColor3 = Color3.fromRGB(34, 139, 34)
-            statusLabel.Text = "✅ Pet management is ACTIVE"
+            statusLabel.Text = "✅ Pet sticking is ACTIVE"
         else
-            toggleBtn.Text = "▶️ Start Pet Management"
+            toggleBtn.Text = "▶️ START PET STICKING"
             toggleBtn.BackgroundColor3 = Color3.fromRGB(220, 53, 69)
-            statusLabel.Text = "⏸️ Pet management is STOPPED"
+            statusLabel.Text = "⏸️ Pet sticking is STOPPED"
         end
     end
     
     toggleBtn.MouseButton1Click:Connect(toggleManagement)
     
-    -- Refresh functionality
-    local function refreshContent()
-        print("🔄 REFRESHING...")
-        statusLabel.Text = "🔄 Scanning for plants and pets..."
+    -- Scan functionality
+    local function performScan()
+        if debugMode then print("🔍 SCANNING...") end
+        statusLabel.Text = "🔍 Scanning for plants and pets..."
         
-        findHoneysucklePlants()
-        findPlayerPets()
+        local plantsFound = findHoneysucklePlants()
+        local petsFound = findActivePets()
         
-        -- Clear existing plant cards
-        for _, child in pairs(contentFrame:GetChildren()) do
-            if child.Name:find("PlantCard_") then
-                child:Destroy()
-            end
-        end
+        statusLabel.Text = string.format("✅ Found %d plants, %d pets", plantsFound, petsFound)
         
-        -- Create new plant cards
-        if #allPlants > 0 then
-            for _, plant in ipairs(allPlants) do
-                createPlantCard(plant, contentFrame)
-            end
-            statusLabel.Text = string.format("✅ Found %d plants, %d pets", #allPlants, #allPets)
-        else
-            statusLabel.Text = "❌ No Honeysuckle found! Check console for details."
-        end
+        debugLabel.Text = string.format("Debug Info:\nPlants: %d\nPets: %d\nAssignments: %d\nManagement: %s", 
+            plantsFound, petsFound, #petAssignments, managementEnabled and "ON" or "OFF")
         
         -- Update canvas size
-        local totalHeight = 100 + (#allPlants * 130) + 50
-        contentFrame.CanvasSize = UDim2.new(0, 0, 0, totalHeight)
+        contentFrame.CanvasSize = UDim2.new(0, 0, 0, 400)
     end
     
-    refreshBtn.MouseButton1Click:Connect(refreshContent)
+    scanBtn.MouseButton1Click:Connect(performScan)
     
-    -- Keyboard shortcut (H key instead of P)
+    -- Assign functionality
+    local function performAssignment()
+        if #honeysucklePlants == 0 or #activePets == 0 then
+            statusLabel.Text = "❌ Scan first to find plants and pets!"
+            return
+        end
+        
+        local success = assignAllPetsToClosest()
+        if success then
+            assignBtn.Text = "✅ All Pets Assigned!"
+            assignBtn.BackgroundColor3 = Color3.fromRGB(0, 150, 0)
+            statusLabel.Text = string.format("✅ Assigned %d pets to honeysuckle", #activePets)
+        else
+            statusLabel.Text = "❌ Assignment failed - check console"
+        end
+    end
+    
+    assignBtn.MouseButton1Click:Connect(performAssignment)
+    
+    -- Keyboard shortcut (H key)
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         if input.KeyCode == Enum.KeyCode.H then
@@ -590,12 +537,15 @@ local function initializeSystem()
     -- Start pet management loop
     RunService.Heartbeat:Connect(managePetPositions)
     
-    -- Initial refresh
-    refreshContent()
+    -- Auto-scan on startup
+    wait(1)
+    performScan()
     
-    print("✅ Pet Plant Manager initialized!")
+    print("✅ Pet Plant Manager (REWRITTEN) initialized!")
     print("📋 Press H to toggle GUI")
-    print("📋 Use the Refresh button to find your Honeysuckle and pets")
+    print("📋 1. Scan for plants and pets")
+    print("📋 2. Assign all pets to closest honeysuckle") 
+    print("📋 3. Start pet sticking to keep them near the plant")
 end
 
 -- Start the system
