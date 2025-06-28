@@ -1,7 +1,3 @@
--- Pet Plant Manager for Grow a Garden (Roblox) - WORKSPACE BASED VERSION
--- Uses actual pet objects in workspace.PetsPhysical and plants in Plants_Physical
--- Place this in StarterGui or StarterPlayerScripts
-
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
@@ -11,25 +7,21 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Configuration
-local PET_DISTANCE = 8 -- How close pets stay to the plant
-local UPDATE_INTERVAL = 0.1 -- Fast updates for responsive movement
-local TELEPORT_METHOD = true -- Use CFrame teleporting instead of smooth movement
+local PET_DISTANCE = 8
+local UPDATE_INTERVAL = 0.1
+local TELEPORT_METHOD = true
 
--- Data storage
 local honeysucklePosition = nil
 local activePetObjects = {}
 local managementEnabled = false
 local debugMode = true
 
--- GUI Creation
 local function createMainGUI()
     local screenGui = Instance.new("ScreenGui")
     screenGui.Name = "PetPlantManager"
     screenGui.ResetOnSpawn = false
     screenGui.Parent = playerGui
 
-    -- Minimized Icon
     local iconFrame = Instance.new("ImageButton")
     iconFrame.Name = "MinimizedIcon"
     iconFrame.Size = UDim2.new(0, 60, 0, 60)
@@ -52,7 +44,6 @@ local function createMainGUI()
     iconLabel.Font = Enum.Font.SourceSansBold
     iconLabel.Parent = iconFrame
 
-    -- Main Menu Frame
     local mainFrame = Instance.new("Frame")
     mainFrame.Name = "MainMenu"
     mainFrame.Size = UDim2.new(0, 400, 0, 550)
@@ -67,7 +58,6 @@ local function createMainGUI()
     mainCorner.CornerRadius = UDim.new(0, 12)
     mainCorner.Parent = mainFrame
 
-    -- Title Bar
     local titleBar = Instance.new("Frame")
     titleBar.Name = "TitleBar"
     titleBar.Size = UDim2.new(1, 0, 0, 40)
@@ -97,7 +87,6 @@ local function createMainGUI()
     titleLabel.TextXAlignment = Enum.TextXAlignment.Left
     titleLabel.Parent = titleBar
 
-    -- Minimize Button
     local minimizeBtn = Instance.new("TextButton")
     minimizeBtn.Name = "MinimizeButton"
     minimizeBtn.Size = UDim2.new(0, 30, 0, 30)
@@ -114,7 +103,6 @@ local function createMainGUI()
     minCorner.CornerRadius = UDim.new(0, 15)
     minCorner.Parent = minimizeBtn
 
-    -- Content Area
     local contentFrame = Instance.new("ScrollingFrame")
     contentFrame.Name = "Content"
     contentFrame.Size = UDim2.new(1, -20, 1, -60)
@@ -129,7 +117,6 @@ local function createMainGUI()
     contentLayout.Padding = UDim.new(0, 10)
     contentLayout.Parent = contentFrame
 
-    -- Status Label
     local statusLabel = Instance.new("TextLabel")
     statusLabel.Name = "StatusLabel"
     statusLabel.Size = UDim2.new(1, 0, 0, 50)
@@ -146,7 +133,6 @@ local function createMainGUI()
     statusCorner.CornerRadius = UDim.new(0, 8)
     statusCorner.Parent = statusLabel
 
-    -- Scan Button
     local scanBtn = Instance.new("TextButton")
     scanBtn.Name = "ScanButton"
     scanBtn.Size = UDim2.new(1, 0, 0, 40)
@@ -163,7 +149,6 @@ local function createMainGUI()
     scanCorner.CornerRadius = UDim.new(0, 8)
     scanCorner.Parent = scanBtn
 
-    -- Management Toggle Button
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Name = "ToggleButton"
     toggleBtn.Size = UDim2.new(1, 0, 0, 50)
@@ -180,7 +165,6 @@ local function createMainGUI()
     toggleCorner.CornerRadius = UDim.new(0, 8)
     toggleCorner.Parent = toggleBtn
 
-    -- Info Display
     local infoLabel = Instance.new("TextLabel")
     infoLabel.Name = "InfoLabel"
     infoLabel.Size = UDim2.new(1, 0, 0, 120)
@@ -201,13 +185,8 @@ local function createMainGUI()
     return screenGui, mainFrame, iconFrame, scanBtn, minimizeBtn, statusLabel, toggleBtn, infoLabel
 end
 
--- Find the main Honeysuckle plant (avoid the fruit duplicate)
 local function findHoneysucklePlant()
     honeysucklePosition = nil
-    
-    if debugMode then print("=== SEARCHING FOR HONEYSUCKLE PLANT ===") end
-    
-    -- Use exact path: workspace.Farm.Farm.Important.Plants_Physical.Honeysuckle
     local honeysucklePath = workspace:FindFirstChild("Farm")
     if honeysucklePath then
         honeysucklePath = honeysucklePath:FindFirstChild("Farm")
@@ -218,62 +197,31 @@ local function findHoneysucklePlant()
                 if honeysucklePath then
                     honeysucklePath = honeysucklePath:FindFirstChild("Honeysuckle")
                     if honeysucklePath then
-                        -- Get the world pivot position as you mentioned
                         local pivot = honeysucklePath:GetPivot()
                         honeysucklePosition = pivot.Position
-                        
-                        if debugMode then 
-                            print("✅ Found Honeysuckle at pivot position:", honeysucklePosition)
-                            print("   Full path:", honeysucklePath:GetFullName())
-                        end
-                        
-                        -- Also try to find any Part inside for backup position
                         for _, child in pairs(honeysucklePath:GetDescendants()) do
-                            if child:IsA("Part") and child.Name ~= "Honeysuckle" then -- Avoid fruit
-                                if debugMode then 
-                                    print("   Found part:", child.Name, "at", child.Position)
-                                end
-                                -- Use the first non-fruit part position if pivot is at origin
+                            if child:IsA("Part") and child.Name ~= "Honeysuckle" then
                                 if honeysucklePosition.Magnitude < 1 then
                                     honeysucklePosition = child.Position
                                 end
                                 break
                             end
                         end
-                        
                         return true
-                    else
-                        if debugMode then print("❌ Honeysuckle folder not found in Plants_Physical") end
                     end
-                else
-                    if debugMode then print("❌ Plants_Physical not found") end
                 end
-            else
-                if debugMode then print("❌ Important not found") end
             end
-        else
-            if debugMode then print("❌ Inner Farm not found") end
         end
-    else
-        if debugMode then print("❌ Outer Farm not found") end
     end
-    
     return false
 end
 
--- Find all PetMover objects in workspace.PetsPhysical
 local function findPetMovers()
     activePetObjects = {}
-    
-    if debugMode then print("=== SEARCHING FOR PETMOVERS ===") end
-    
     local petsPhysical = workspace:FindFirstChild("PetsPhysical")
     if petsPhysical then
-        if debugMode then print("✅ Found PetsPhysical folder") end
-        
         for _, petModel in pairs(petsPhysical:GetChildren()) do
             if petModel.Name == "PetMover" and petModel:IsA("Model") then
-                -- Look for the RootPart_PetMover_WELD
                 local rootPart = petModel:FindFirstChild("RootPart_PetMover_WELD")
                 if rootPart and rootPart:IsA("Part") then
                     table.insert(activePetObjects, {
@@ -281,73 +229,43 @@ local function findPetMovers()
                         rootPart = rootPart,
                         name = petModel.Name .. "_" .. #activePetObjects
                     })
-                    
-                    if debugMode then 
-                        print("✅ Found PetMover:", petModel:GetFullName())
-                        print("   RootPart at:", rootPart.Position)
-                        print("   CFrame:", rootPart.CFrame)
-                    end
                 end
             end
         end
-    else
-        if debugMode then print("❌ PetsPhysical folder not found in workspace") end
     end
-    
-    if debugMode then 
-        print("=== PETMOVER SEARCH COMPLETE ===")
-        print("Total PetMovers found:", #activePetObjects)
-    end
-    
     return #activePetObjects
 end
 
--- Calculate positions around the honeysuckle for pets
 local function calculatePetPositions()
     if not honeysucklePosition or #activePetObjects == 0 then return {} end
-    
     local positions = {}
     local petCount = #activePetObjects
-    
     for i = 1, petCount do
         local angle = (i - 1) * (math.pi * 2) / petCount
         local x = honeysucklePosition.X + math.cos(angle) * PET_DISTANCE
         local z = honeysucklePosition.Z + math.sin(angle) * PET_DISTANCE
-        local y = honeysucklePosition.Y + 2 -- Slightly above ground
-        
+        local y = honeysucklePosition.Y + 2
         positions[i] = Vector3.new(x, y, z)
     end
-    
     return positions
 end
 
--- Move pets to their assigned positions around honeysuckle
 local function movePetsToHoneysuckle()
     if not honeysucklePosition or #activePetObjects == 0 or not managementEnabled then
         return
     end
-    
     local targetPositions = calculatePetPositions()
-    
     for i, petData in ipairs(activePetObjects) do
         if petData.rootPart and petData.rootPart.Parent and targetPositions[i] then
             local targetPos = targetPositions[i]
             local currentPos = petData.rootPart.Position
             local distance = (targetPos - currentPos).Magnitude
-            
-            -- Only move if pet is too far from target
             if distance > 3 then
                 if TELEPORT_METHOD then
-                    -- Direct teleport method
                     pcall(function()
                         petData.rootPart.CFrame = CFrame.new(targetPos)
                     end)
-                    
-                    if debugMode then 
-                        print("Teleported", petData.name, "to", targetPos)
-                    end
                 else
-                    -- Smooth movement method
                     local bodyPosition = petData.rootPart:FindFirstChild("BodyPosition")
                     if not bodyPosition then
                         bodyPosition = Instance.new("BodyPosition")
@@ -356,76 +274,49 @@ local function movePetsToHoneysuckle()
                         bodyPosition.D = 500
                         bodyPosition.Parent = petData.rootPart
                     end
-                    
                     bodyPosition.Position = targetPos
-                    
-                    -- Clean up after movement
-                    game:GetService("Debris"):AddItem(bodyPosition, 2)
-                    
-                    if debugMode then 
-                        print("Moving", petData.name, "to", targetPos)
-                    end
                 end
             end
         end
     end
 end
 
--- Main pet management loop
 local lastMoveTime = 0
 local function managePets(deltaTime)
     lastMoveTime = lastMoveTime + deltaTime
-    
     if lastMoveTime >= UPDATE_INTERVAL then
         lastMoveTime = 0
         movePetsToHoneysuckle()
     end
 end
 
--- Main System
 local function initializeSystem()
     local screenGui, mainFrame, iconFrame, scanBtn, minimizeBtn, statusLabel, toggleBtn, infoLabel = createMainGUI()
-    
-    -- Minimize/Maximize functionality
     local function minimizeMenu()
-        local tween = TweenService:Create(
-            mainFrame,
-            TweenInfo.new(0.3, Enum.EasingStyle.Quad),
-            {Size = UDim2.new(0, 0, 0, 0)}
-        )
+        local tween = TweenService:Create(mainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {Size = UDim2.new(0, 0, 0, 0)})
         tween:Play()
         tween.Completed:Connect(function()
             mainFrame.Visible = false
             iconFrame.Visible = true
         end)
     end
-    
     local function maximizeMenu()
         mainFrame.Visible = true
         mainFrame.Size = UDim2.new(0, 0, 0, 0)
         iconFrame.Visible = false
-        local tween = TweenService:Create(
-            mainFrame,
-            TweenInfo.new(0.3, Enum.EasingStyle.Quad),
-            {Size = UDim2.new(0, 400, 0, 550)}
-        )
+        local tween = TweenService:Create(mainFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {Size = UDim2.new(0, 400, 0, 550)})
         tween:Play()
     end
-    
     minimizeBtn.MouseButton1Click:Connect(minimizeMenu)
     iconFrame.MouseButton1Click:Connect(maximizeMenu)
-    
-    -- Toggle Management
     local function toggleManagement()
         managementEnabled = not managementEnabled
-        
         if managementEnabled then
             if not honeysucklePosition or #activePetObjects == 0 then
                 statusLabel.Text = "❌ Scan first to find honeysuckle and pets!"
                 managementEnabled = false
                 return
             end
-            
             toggleBtn.Text = "⏹️ STOP STICKING PETS"
             toggleBtn.BackgroundColor3 = Color3.fromRGB(34, 139, 34)
             statusLabel.Text = "✅ Pets are being stuck to honeysuckle!"
@@ -435,21 +326,14 @@ local function initializeSystem()
             statusLabel.Text = "⏸️ Pet sticking stopped"
         end
     end
-    
     toggleBtn.MouseButton1Click:Connect(toggleManagement)
-    
-    -- Scan functionality
     local function performScan()
-        if debugMode then print("🔍 SCANNING WORKSPACE...") end
         statusLabel.Text = "🔍 Scanning workspace for honeysuckle and pets..."
-        
         local foundPlant = findHoneysucklePlant()
         local foundPets = findPetMovers()
-        
         if foundPlant and honeysucklePosition then
             statusLabel.Text = string.format("✅ Found honeysuckle + %d pets", foundPets)
-            
-            infoLabel.Text = string.format("Scan Results:\n✅ Honeysuckle: %s\n✅ PetMovers: %d\n📍 Plant Position: %.1f, %.1f, %.1f\n\nReady to stick pets!", 
+            infoLabel.Text = string.format("Scan Results:\n✅ Honeysuckle: %s\n✅ PetMovers: %d\n📍 Plant Position: %.1f, %.1f, %.1f\n\nReady to stick pets!",
                 foundPlant and "FOUND" or "NOT FOUND",
                 foundPets,
                 honeysucklePosition.X, honeysucklePosition.Y, honeysucklePosition.Z
@@ -459,34 +343,16 @@ local function initializeSystem()
             infoLabel.Text = string.format("Scan Results:\n❌ Honeysuckle: NOT FOUND\n✅ PetMovers: %d\n\nCheck the console for details.", foundPets)
         end
     end
-    
     scanBtn.MouseButton1Click:Connect(performScan)
-    
-    -- Keyboard shortcut (H key)
     UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         if input.KeyCode == Enum.KeyCode.H then
-            if mainFrame.Visible then
-                minimizeMenu()
-            else
-                maximizeMenu()
-            end
+            if mainFrame.Visible then minimizeMenu() else maximizeMenu() end
         end
     end)
-    
-    -- Start pet management loop
     RunService.Heartbeat:Connect(managePets)
-    
-    -- Auto-scan on startup
     wait(1)
     performScan()
-    
-    print("✅ Pet Plant Manager (WORKSPACE VERSION) initialized!")
-    print("📋 Press H to toggle GUI")
-    print("📋 1. Scan to find honeysuckle and PetMovers")
-    print("📋 2. Start sticking pets to keep them around honeysuckle")
-    print("📋 Using direct CFrame teleportation for immediate results")
 end
 
--- Start the system
 initializeSystem()
