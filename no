@@ -1,0 +1,205 @@
+local Players           = game:GetService("Players")
+local TweenService      = game:GetService("TweenService")
+local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
+
+local player    = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local PET_DISTANCE    = 8
+local UPDATE_INTERVAL = 0.1
+local TELEPORT_METHOD = true
+
+local honeysucklePosition = nil
+local activePetObjects    = {}
+local managementEnabled   = false
+
+-- GUI creation stays exactly the same
+local function createMainGUI()
+    -- [snip: same as your original createMainGUI()]
+    -- Paste your original createMainGUI body here unchanged
+end
+
+local function findHoneysucklePlant()
+    honeysucklePosition = nil
+    local farm     = workspace:FindFirstChild("Farm") 
+                 and workspace.Farm:FindFirstChild("Farm")
+    local important= farm     and farm:FindFirstChild("Important")
+    local phys     = important and important:FindFirstChild("Plants_Physical")
+    local honeys   = phys     and phys:FindFirstChild("Honeysuckle")
+    if not honeys then return false end
+
+    local pivotPos = honeys:GetPivot().Position
+    -- fallback to first child‐part if pivot at origin
+    if pivotPos.Magnitude < 1 then
+        for _, c in ipairs(honeys:GetDescendants()) do
+            if c:IsA("BasePart") and c.Name ~= "Honeysuckle" then
+                pivotPos = c.Position
+                break
+            end
+        end
+    end
+
+    honeysucklePosition = pivotPos
+    return true
+end
+
+-- <<< REPLACED findPetMovers >>> 
+local function findPetMovers()
+    activePetObjects = {}
+    local petsPhysical = workspace:FindFirstChild("PetsPhysical")
+    if not petsPhysical then
+        warn("PetsPhysical folder not found")
+        return 0
+    end
+
+    -- YOUR hardcoded order of 7 pets
+    local refs = {
+        petsPhysical:GetChildren()[7],
+        petsPhysical:FindFirstChild("PetMover"),
+        petsPhysical:GetChildren()[4],
+        petsPhysical:GetChildren()[2],
+        petsPhysical:GetChildren()[5],
+        petsPhysical:GetChildren()[6],
+        petsPhysical:GetChildren()[3],
+    }
+
+    for idx, petModel in ipairs(refs) do
+        if petModel and petModel:IsA("Model") then
+            -- Look for the special weld‐part or fallback to PrimaryPart
+            local rootPart = petModel:FindFirstChild("RootPart_PetMover_WELD")
+                          or petModel.PrimaryPart
+            if rootPart and rootPart:IsA("BasePart") then
+                table.insert(activePetObjects, {
+                    model    = petModel,
+                    rootPart = rootPart,
+                    name     = petModel.Name .. "_" .. idx,
+                })
+            else
+                warn("No valid root part for pet #" .. idx, petModel)
+            end
+        else
+            warn("Pet reference at index " .. idx .. " is invalid")
+        end
+    end
+
+    return #activePetObjects
+end
+-- <<< end replacement >>>
+
+local function calculatePetPositions()
+    if not honeysucklePosition or #activePetObjects == 0 then return {} end
+    local positions = {}
+    local petCount  = #activePetObjects
+    for i = 1, petCount do
+        local angle = (i - 1) * (math.pi * 2) / petCount
+        local x     = honeysucklePosition.X + math.cos(angle) * PET_DISTANCE
+        local z     = honeysucklePosition.Z + math.sin(angle) * PET_DISTANCE
+        local y     = honeysucklePosition.Y + 2
+        positions[i] = Vector3.new(x, y, z)
+    end
+    return positions
+end
+
+local function movePetsToHoneysuckle()
+    if not honeysucklePosition or #activePetObjects == 0 or not managementEnabled then
+        return
+    end
+
+    local targets = calculatePetPositions()
+    for i, data in ipairs(activePetObjects) do
+        local rootPart = data.rootPart
+        if rootPart and rootPart.Parent and targets[i] then
+            local targetPos = targets[i]
+            local dist      = (targetPos - rootPart.Position).Magnitude
+            if dist > 3 then
+                if TELEPORT_METHOD then
+                    pcall(function()
+                        rootPart.CFrame = CFrame.new(targetPos)
+                    end)
+                else
+                    local bp = rootPart:FindFirstChild("BodyPosition")
+                    if not bp then
+                        bp = Instance.new("BodyPosition")
+                        bp.MaxForce = Vector3.new(4000,4000,4000)
+                        bp.P = 3000
+                        bp.D = 500
+                        bp.Parent = rootPart
+                    end
+                    bp.Position = targetPos
+                end
+            end
+        end
+    end
+end
+
+local lastMoveTime = 0
+local function managePets(dt)
+    lastMoveTime = lastMoveTime + dt
+    if lastMoveTime >= UPDATE_INTERVAL then
+        lastMoveTime = 0
+        movePetsToHoneysuckle()
+    end
+end
+
+local function initializeSystem()
+    local screenGui, mainFrame, iconFrame, scanBtn, minimizeBtn, statusLabel, toggleBtn, infoLabel
+      = createMainGUI()
+
+    -- minimize/maximize logic (unchanged)
+    local function minimizeMenu()
+        -- ...
+    end
+    local function maximizeMenu()
+        -- ...
+    end
+    minimizeBtn.MouseButton1Click:Connect(minimizeMenu)
+    iconFrame.MouseButton1Click:Connect(maximizeMenu)
+
+    toggleBtn.MouseButton1Click:Connect(function()
+        managementEnabled = not managementEnabled
+        if managementEnabled then
+            if not honeysucklePosition or #activePetObjects == 0 then
+                statusLabel.Text = "❌ Scan first to find honeysuckle and pets!"
+                managementEnabled = false
+                return
+            end
+            toggleBtn.Text = "⏹️ STOP STICKING PETS"
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(34,139,34)
+            statusLabel.Text = "✅ Pets are being stuck to honeysuckle!"
+        else
+            toggleBtn.Text = "▶️ START STICKING PETS TO HONEYSUCKLE"
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(220,53,69)
+            statusLabel.Text = "⏸️ Pet sticking stopped"
+        end
+    end)
+
+    scanBtn.MouseButton1Click:Connect(function()
+        statusLabel.Text = "🔍 Scanning workspace for honeysuckle and pets..."
+        local gotPlant = findHoneysucklePlant()
+        local petCount = findPetMovers()
+        if gotPlant then
+            statusLabel.Text = ("✅ Found honeysuckle + %d pets"):format(petCount)
+            infoLabel.Text = ("Scan Results:\n✅ Honeysuckle: FOUND\n✅ PetMovers: %d\n📍 Plant Position: %.1f, %.1f, %.1f\n\nReady to stick pets!")
+                :format(petCount, honeysucklePosition.X, honeysucklePosition.Y, honeysucklePosition.Z)
+        else
+            statusLabel.Text = "❌ Honeysuckle not found! Check console."
+            infoLabel.Text = ("Scan Results:\n❌ Honeysuckle: NOT FOUND\n✅ PetMovers: %d\n\nCheck the console for details."):format(petCount)
+        end
+    end)
+
+    UserInputService.InputBegan:Connect(function(input, gp)
+        if gp then return end
+        if input.KeyCode == Enum.KeyCode.H then
+            if mainFrame.Visible then minimizeMenu() else maximizeMenu() end
+        end
+    end)
+
+    RunService.Heartbeat:Connect(managePets)
+
+    wait(1)
+    -- auto–scan on init
+    scanBtn:Activate()
+end
+
+initializeSystem()
