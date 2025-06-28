@@ -1,0 +1,54 @@
+-- ServerScriptService/PetZoneController.lua
+local RunService        = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- References
+local zonePart    = workspace:WaitForChild("GardenZone")
+local abilityRE   = ReplicatedStorage:WaitForChild("PetAbility")
+
+-- Precompute bounds
+local zoneCFrame   = zonePart.CFrame
+local halfExtents  = zonePart.Size * 0.5
+local zoneMin      = zoneCFrame.Position - halfExtents
+local zoneMax      = zoneCFrame.Position + halfExtents
+local zoneCenter   = (zoneMin + zoneMax) * 0.5
+
+-- Utility: is Vector3 inside AABB?
+local function isInZone(pos)
+    return pos.X >= zoneMin.X and pos.X <= zoneMax.X
+       and pos.Y >= zoneMin.Y and pos.Y <= zoneMax.Y
+       and pos.Z >= zoneMin.Z and pos.Z <= zoneMax.Z
+end
+
+-- 1) Keep pets in the zone
+RunService.Heartbeat:Connect(function()
+    for _, pet in ipairs(CollectionService:GetTagged("Pet")) do
+        if pet.PrimaryPart then
+            local pPos = pet.PrimaryPart.Position
+            if not isInZone(pPos) then
+                -- instant teleport back to center (you can lerp for smoother motion)
+                pet:SetPrimaryPartCFrame(CFrame.new(zoneCenter) * CFrame.Angles(0, pet.PrimaryPart.CFrame.Y, 0))
+            end
+        end
+    end
+end)
+
+-- 2) Handle ability requests
+abilityRE.OnServerEvent:Connect(function(player, petModel, abilityName, ...)
+    -- validate the pet belongs to this player
+    if not CollectionService:HasTag(petModel, "Pet") then return end
+    if petModel:GetAttribute("OwnerUserId") ~= player.UserId then return end
+
+    -- make sure pet is still in the garden
+    local pos = petModel.PrimaryPart and petModel.PrimaryPart.Position
+    if not pos or not isInZone(pos) then return end
+
+    -- Dispatch ability (you’ll fill this in with your own logic)
+    if abilityName == "Harvest" then
+        -- e.g. call a function on the pet’s script
+        petModel:FindFirstChild("HarvestScript"):Activate(...)
+    elseif abilityName == "Heal" then
+        petModel:FindFirstChild("HealScript"):Activate(...)
+    end
+end)
